@@ -1,30 +1,16 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 from groq import Groq
-from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+app = Flask(__name__)
 
-origins = [ "*" ]
+# Enable CORS for all routes
+CORS(app, origins=["*"], allow_headers=["*"], methods=["*"], supports_credentials=True)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True, 
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class user_prompt(BaseModel):
-    prompt: str
-    
-class html_content(BaseModel):
-    content: str
-   
 def generate_website(prompt):
     print(prompt)
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"),)
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     chat_completion = client.chat.completions.create(
         messages=[
             {
@@ -64,26 +50,41 @@ def generate_website(prompt):
     print(chat_completion.choices[0].message.content)
 
     with open("portfolio.html", "w") as f:
-        f.write(chat_completion.choices[0].message.content) 
-    
-@app.post("/generate_portfolio")
-def generate_portfolio(prompt: user_prompt):
-    print(prompt.prompt)
+        f.write(chat_completion.choices[0].message.content)
+
+@app.route("/generate_portfolio", methods=["POST"])
+def generate_portfolio():
     try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Validate that prompt is provided
+        if not data or 'prompt' not in data:
+            return jsonify({"error": "Prompt is required"}), 400
+        
+        prompt = data['prompt']
+        print(prompt)
+        
         print("starting generation...")
-        generate_website(prompt.prompt)
+        generate_website(prompt)
         print("Generation completed.")
+        
+        return jsonify({"message": "Portfolio generated successfully"}), 200
+        
     except Exception as e:
-        return {"error": str(e)}
-    
-@app.get("/get_html")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get_html", methods=["GET"])
 def get_html():
-    if os.path.exists("portfolio.html"):
-        with open("portfolio.html", "r") as f:
-            content = f.read()
-        return {"html_content": content}
-    else:
-        return {"error": "Portfolio HTML file not found."}
+    try:
+        if os.path.exists("portfolio.html"):
+            with open("portfolio.html", "r") as f:
+                content = f.read()
+            return jsonify({"html_content": content}), 200
+        else:
+            return jsonify({"error": "Portfolio HTML file not found."}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-
-
+if __name__ == "__main__":
+    app.run(debug=True)
